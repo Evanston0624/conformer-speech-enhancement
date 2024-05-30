@@ -1,0 +1,10 @@
+__pycache__/
+conformer/__pycache__/
+data/*
+model/*
+log/*
+./eval/
+eval/
+eval/log/*
+eval/spec/*
+
