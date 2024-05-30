@@ -6,11 +6,11 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 class conformer_tr():
-    def __init__(self, MdlPth, CPTPth):
+    def __init__(self, MdlPth, CPTPth, encoder_dim, num_encoder_layers, num_attention_heads):
         from conformer import Conformer
         batch_size = 1
         self.sequence_length = 300
-        dim = 257
+        self.dim = 257
         self.MdlPth = MdlPth
         self.CPTPth = CPTPth
         self.Dtype = torch.float
@@ -18,12 +18,15 @@ class conformer_tr():
 
         self.device = torch.device('cuda' if cuda else 'cpu')
 
-        self.model = Conformer(num_classes=dim, 
-                          input_dim=dim, 
-                          encoder_dim=64, 
-                          num_encoder_layers=4).to(self.device)
+        self.model = Conformer(num_classes=self.dim, 
+                          input_dim=self.dim, 
+                          encoder_dim=encoder_dim, 
+                          num_encoder_layers=num_encoder_layers,
+                          num_attention_heads=num_attention_heads).to(self.device)
+        # self.model = nn.DataParallel(self.model)
 
         self.MSELoss = nn.MSELoss().to(self.device)
+
         self.optimizer = NAdam(self.model.parameters(), lr=1e-3)
         self.writer = SummaryWriter(CPTPth)
         self.normal_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.95)
@@ -65,6 +68,7 @@ class conformer_tr():
         for itrNum, FeaDict in enumerate(pbar):
             # Forward propagate
             outputs, output_lengths = self.model(FeaDict['DegFeat']['inpfeat'].type(self.Dtype).to(self.device), torch.LongTensor([self.sequence_length]))
+            # outputs, output_lengths = self.model.module(FeaDict['DegFeat']['inpfeat'].type(self.Dtype).to(self.device), torch.LongTensor([self.sequence_length]))
             tarFea = TarFea = FeaDict['TarSpec']['rcnspec'].type(self.Dtype).to(self.device)
 
             # print('inp.shape:',FeaDict['DegFeat']['inpfeat'].shape)
@@ -139,8 +143,8 @@ class conformer_tr():
             # print('inp.shape:',inp_data.shape)
              # 如果输入数据的长度小于 300
             if inp_data.shape[1] < 300:
-                # 创建一个形状为 (1, 300, 257) 的全零张量
-                padded_data = torch.zeros((1, 300, 257))
+                # 创建一个形状为 (1, 300, self.dim) 的全零张量
+                padded_data = torch.zeros((1, 300, self.dim))
 
                 # 将原始数据复制到新的全零张量中
                 padded_data[:, :inp_data.shape[1], :] = inp_data

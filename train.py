@@ -28,32 +28,6 @@ from torch.utils.data import DataLoader
 
 from pre_processing import wav2spec, spec2wav
 
-def snrcal(InpClnPth, InpNoyPth):
-    epsilon = np.finfo(float).eps
-    #SNRcal
-    (Fs,voice_data)=audioread(InpClnPth)
-    (Fs,noisy_data)=audioread(InpNoyPth)
-
-    voice_data=voice_data/1.0
-    noisy_data=noisy_data/1.0
-
-    nsypoints=noisy_data.shape[0]
-
-    Err_signal = voice_data[0:nsypoints] - noisy_data
-
-    ref_pow = np.dot(voice_data,voice_data)
-    err_pow = np.dot(Err_signal,Err_signal)
-
-    esnr = ref_pow/(err_pow + epsilon * (err_pow == 0).astype('int'))
-    return 10 * np.log10(esnr + epsilon * (esnr == 0).astype('int'))
-
-def si_sdr(estimate, reference):
-    alpha = np.dot(estimate.T, reference) / (np.dot(estimate.T, estimate) + epsilon)
-
-    molecular = ((alpha * reference) ** 2).sum()  # 分子
-    denominator = ((alpha * reference - estimate) ** 2).sum()  # 分母
-    return 10 * np.log10((molecular) / (denominator+epsilon))
-
 # device
 def get_device():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -106,47 +80,35 @@ def cr_f(path):
         os.mkdir(path)
 
 if __name__ == '__main__':
-    BatchSize = 60
-    Epochs = 40
-    # Layer_Size_List = [100, 100, 100, 100]
-    # SNR = np.arange(-3,11,1)
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
+    # model path
+    ModelPath = "./model"
+    cr_f(ModelPath)
+    ModelPath = "./model/conformer/"
+    cr_f(ModelPath)
+    CkpotPath = "./model/conformer/checkpoint/"
+    cr_f(CkpotPath)
+
     # data
-    TrCleanVoiceFolder = "./data/wsj_8k_mv/train/"
-    TsCleanVoiceFolder = "./data/wsj_8k_mv/test/"
-    VaCleanVoiceFolder = "./data/wsj_8k_mv/valid/"
+    TrCleanVoiceFolder = "./data/clean_audio/train_set/"
+    VaCleanVoiceFolder = "./data/clean_audio/valid_set/"
+    TrNoisyVoiceFolder = "./data/noisy_audio/train_set/"
+    VaNoisyVoiceFolder = "./data/noisy_audio/valid_set/"
 
-    for i in range (3, 10) :
-        TrNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/train/"
+    encoder_dim = 128
+    num_encoder_layers = 5
+    num_attention_heads = 8
+    Epochs = 150
+    BatchSize = 35
 
-        TsNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/test/"
+    from load_data import C_Dataset
+    TrDataLdr = {
+                'tr' : DataLoader(C_Dataset(TrCleanVoiceFolder, TrNoisyVoiceFolder, 'train'), batch_size=BatchSize, shuffle=True, num_workers=0, collate_fn = collate_fn),
+                 'va' : DataLoader(C_Dataset(VaCleanVoiceFolder, VaNoisyVoiceFolder, 'valid'), batch_size=1, num_workers=0, collate_fn = collate_fn)
+                }
 
-        VaNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/valid/"
-
-        # model
-        ModelPath = f"./model/conformer/L{i}_B4_P7_G2/"
-        cr_f(ModelPath)
-
-        CkpotPath = f"./model/conformer/checkpoint/L{i}_B4_P7_G2"
-        cr_f(CkpotPath)
-
-        # ClnWavData = os.listdir(TrCleanVoiceFolder)
-        # NoeWavData = os.listdir(TrNoiseSignlFolder)
-
-        # # data loader
-        # for clnwavfile in ClnWavData:
-        #   for noewavfile in NoeWavData:
-        #     for snrInd in SNR:
-
-        #         nsywavname = f'{clnwavfile.split(".")[0]}-{noewavfile.split(".")[0]}-{snrInd}.wav'
-        #         #mix_noise(join(TrCleanVoiceFolder,clnwavfile),join(TrNoiseSignlFolder,noewavfile),join(TrNoisyVoiceFolder,nsywavname),snrInd)
-        
-        from load_data import C_Dataset
-        TrDataLdr = {
-                    'tr' : DataLoader(C_Dataset(TrCleanVoiceFolder, TrNoisyVoiceFolder, 'train'), batch_size=BatchSize, shuffle=True, num_workers=0, collate_fn = collate_fn),
-                     'va' : DataLoader(C_Dataset(VaCleanVoiceFolder, VaNoisyVoiceFolder, 'valid'), batch_size=1, num_workers=0, collate_fn = collate_fn)
-                    }
-
-        # training
-        from conformer_train import conformer_tr
-        conformer_tr = conformer_tr(MdlPth=ModelPath, CPTPth=CkpotPath)
-        conformer_tr.train(Epochs,TrDataLdr)
+    # training
+    from conformer_train import conformer_tr
+    conformer_tr = conformer_tr(MdlPth=ModelPath, CPTPth=CkpotPath, encoder_dim=encoder_dim, num_encoder_layers=num_encoder_layers, num_attention_heads=num_attention_heads)
+    conformer_tr.train(Epochs,TrDataLdr)

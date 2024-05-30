@@ -80,78 +80,41 @@ if __name__ == '__main__':
     BatchSize = 1
     Epochs = 10
     Dtype = torch.float
-    # Layer_Size_List = [100, 100, 100, 100]
-    # SNR = np.arange(-3,11,1)
-    
-    TrCleanVoiceFolder = "./data/wsj_8k_mv/train/"
-    TsCleanVoiceFolder = "./data/wsj_8k_mv/test/"
-    VaCleanVoiceFolder = "./data/wsj_8k_mv/valid/"
 
+    TsNoisyVoiceFolder = "./data/clean_audio/test_set/"
+    TsEnhacVoiceFolder = "./data/enhance_audio/"
+    cr_f(TsEnhacVoiceFolder)
 
-    for i in range (3, 10) :
-        count = 0
-        TrNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/train/"
+    # # model
+    ModelPath = f"./model/conformer/mdl.pkl"
+    CkpotPath = f"./model/conformer/checkpoint/"
 
-        TsNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/test/"
+    encoder_dim = 128
+    num_encoder_layers = 5
+    num_attention_heads = 8
 
-        VaNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/valid/"
+    from conformer_train import conformer_tr
+    conformer_tr = conformer_tr(MdlPth=ModelPath, CPTPth=CkpotPath, encoder_dim=encoder_dim, num_encoder_layers=num_encoder_layers, num_attention_heads=num_attention_heads)
+    conformer_tr._load_Mdl()
 
-        TsEnhacVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/enhance/"
-        cr_f(TsEnhacVoiceFolder)
-        cr_f(TsEnhacVoiceFolder+'conformer')
-        # model
-        ModelPath = f"./model/conformer/L{i}_B4_P7_G2/mdl.pkl"
-        CkpotPath = f"./model/conformer/checkpoint/L{i}_B4_P7_G2"
+    n_paths = []
+    e_paths = []
 
-        # ClnWavData = os.listdir(TrCleanVoiceFolder)01fo0317.wav
-        # NoeWavData = os.listdir(TrNoiseSignlFolder)
-        # Dtype = torch.float
-        # # data loader
-        # for clnwavfile in ClnWavData:
-        #   for noewavfile in NoeWavData:
-        #     for snrInd in SNR:
+    NoyWavData = os.listdir(TsNoisyVoiceFolder)
+    for noywavfile in NoyWavData:
+        clnfilenme = noywavfile.split(filesep)[-1].split('_')[0]
 
-        #         nsywavname = f'{clnwavfile.split(".")[0]}-{noewavfile.split(".")[0]}-{snrInd}.wav'
-        #         #mix_noise(join(TrCleanVoiceFolder,clnwavfile),join(TrNoiseSignlFolder,noewavfile),join(TrNoisyVoiceFolder,nsywavname),snrInd)
-        # from load_data import C_Dataset
-        # TrDataLdr = {
-        #             'tr' : DataLoader(C_Dataset(TrCleanVoiceFolder, TrNoisyVoiceFolder, 'train'), batch_size=BatchSize, shuffle=True, num_workers=0, collate_fn = collate_fn),
-        #              'va' : DataLoader(C_Dataset(TsCleanVoiceFolder, TsNoisyVoiceFolder, 'valid'), batch_size=1, num_workers=0, collate_fn = collate_fn)
-        #             }
+        n_paths.append(join(TsNoisyVoiceFolder,noywavfile))
+        e_paths.append(join(TsEnhacVoiceFolder,noywavfile))
 
-        # training
-        from conformer_train import conformer_tr
-        conformer_tr = conformer_tr(MdlPth=ModelPath, CPTPth=CkpotPath)
-        conformer_tr._load_Mdl()
+    for noyfile, enhfile in zip(n_paths,e_paths):
+        (fs,nsyData) = audioread(noyfile)
 
-        n_paths = []
-        c_paths = []
-        e_paths = []
+        TmpSpec, NoyPhas = wav2spec(nsyData/(2.0**15),returnPhase = True)
+        NoyFeat = torch.from_numpy(np.expand_dims(TmpSpec.T, axis=0)).type(torch.float)
 
-        NoyWavData = os.listdir(TsNoisyVoiceFolder)
-        for noywavfile in NoyWavData:
-            clnfilenme = noywavfile.split(filesep)[-1].split('_')[0]
+        mdlout = conformer_tr.eval(NoyFeat)
 
-            n_paths.append(join(TsNoisyVoiceFolder,noywavfile))
+        enhWav = spec2wav(mdlout[0].detach().cpu().type(Dtype).T, NoyPhas[:, :mdlout[0].shape[0]])
 
-            e_paths.append(join(TsEnhacVoiceFolder,'conformer',noywavfile))
-
-            c_paths.append(join(TrCleanVoiceFolder,f'{clnfilenme}.wav'))
-
-        for noyfile, enhfile in zip(n_paths,e_paths):
-            print('enhfile:',enhfile)
-            (fs,nsyData) = audioread(noyfile)
-            print('inp:fs:',fs,'|nsyData.shape:',nsyData.shape)
-
-            TmpSpec, NoyPhas = wav2spec(nsyData/(2.0**15),returnPhase = True)
-            NoyFeat = torch.from_numpy(np.expand_dims(TmpSpec.T, axis=0)).type(torch.float)
-
-            mdlout = conformer_tr.eval(NoyFeat)
-
-            enhWav = spec2wav(mdlout[0].detach().cpu().type(Dtype).T, NoyPhas[:, :mdlout[0].shape[0]])
-            print('enhWav.shape:',enhWav.shape)
-
-            audiowrite(enhfile, 8000, np.round(np.array(enhWav * (2**15))).astype('int16'))
-
-            count += 1
-        print(f"./data/L{i}_B4_P7_G2_mv/enhance/ data_count:{count}")
+        audiowrite(enhfile, fs, np.round(np.array(enhWav * (2**15))).astype('int16'))
