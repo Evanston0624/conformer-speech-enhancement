@@ -145,7 +145,6 @@ if __name__ == '__main__':
         nyclsin += stoi(clndata[0:minpoints]*1.0, noydata[0:minpoints]*1.0, fs)
         enclsin += stoi(clndata[0:minpoints]*1.0, enhdata[0:minpoints]*1.0, fs)
 
-
     nyclsnr = nyclsnr/len(NoyWavData)
     ehclsnr = ehclsnr/len(NoyWavData)
 

@@ -27,7 +27,7 @@ cd conformer-speech-enhancement
 You need to install pip\
 Next, on Linux you can run:
 ```
-sh requirements.sh
+pip install -r requirements.txt
 ```
 If you're using conda as your package manager, please refer to requirements.sh for installing dependencies.  
 ## dataset
@@ -35,8 +35,8 @@ If you're using conda as your package manager, please refer to requirements.sh f
 2. This project was tested with a sample rate of 8000. If your sample rate is different, you may need to adjust some parameters to achieve better results.  
 
 Mix the above data into noisy speech data. The names of the noisy speech data should be the same as the clean data, such as:  
-clean_audio/1.wav, 2.wav, ..., n.wav
-noisy_audio/1.wav, 2.wav, ..., n.wav
+clean_audio/1.wav, 2.wav, ..., n.wav  
+noisy_audio/1.wav, 2.wav, ..., n.wav  
 Next, split clean_audio and noisy_audio into train, valid, and test sets.  
 The train set is used to train the model.  
 The valid set evaluates the model performance between each epoch.  
@@ -111,6 +111,8 @@ eval_path = './eval/'
 cr_f(eval_path)
 eval_file = f'{eval_path}ed{encoder_dim}_el{num_encoder_layers}_ah{num_attention_heads}.txt'
 ```
+The evaluation metrics used in this project are: si_sdr, pesq, and stoi.  
 
 ## to-do list
 1. Traditional Chinese README
+2. The current code still needs to be streamlined, as there are many identical functions existing in different .py files.  
