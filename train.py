@@ -91,11 +91,10 @@ if __name__ == '__main__':
     cr_f(CkpotPath)
 
     # data
-    TrCleanVoiceFolder = "./data/clean_audio/train_set/"
-    VaCleanVoiceFolder = "./data/clean_audio/valid_set/"
-    TrNoisyVoiceFolder = "./data/noisy_audio/train_set/"
-    VaNoisyVoiceFolder = "./data/noisy_audio/valid_set/"
-
+    TrCleanVoiceFolder = "./data/wsj_8k_mv/train/"
+    VaCleanVoiceFolder = "./data/wsj_8k_mv/valid/"
+    TrNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/train/"
+    VaNoisyVoiceFolder = f"./data/L{i}_B4_P7_G2_mv/valid/"
     encoder_dim = 128
     num_encoder_layers = 5
     num_attention_heads = 8

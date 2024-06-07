@@ -113,6 +113,47 @@ eval_file = f'{eval_path}ed{encoder_dim}_el{num_encoder_layers}_ah{num_attention
 ```
 The evaluation metrics used in this project are: si_sdr, pesq, and stoi.  
 
+## Method
+In this project, the CNN blocks of the conformer were adjusted:  
+```
+class Conv2dSubampling(nn.Module):
+	...
+	self.sequential = nn.Sequential(
+		# Before
+		# nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2), nn.ReLU(),
+		# nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=2), nn.ReLU(),
+		# After
+		nn.Conv2d(in_channels, out_channels, kernel_size=(1, 3), stride=1), nn.ReLU(),
+		nn.Conv2d(out_channels, out_channels, kernel_size=(1, 3), stride=1), nn.ReLU(),
+	)
+	...
+class ConformerEncoder(nn.Module):
+	def __init__(
+		...
+	):
+		super(ConformerEncoder, self).__init__()
+        self.conv_subsample = Conv2dSubampling(in_channels=1, out_channels=encoder_dim)
+        self.input_projection = nn.Sequential(
+	        # After
+            Linear(encoder_dim * (((input_dim - 3) // 1 - 1) // 1), encoder_dim),
+            # ((input_dim - kernel_size_n) // (stride) - 1) // (stride)
+            nn.Dropout(p=input_dropout_p),
+        )
+        ...
+```
+## Experiment
+This project conducted a simple evaluation using the Wall Street Journal (WSJ) database as clean speech data. The WSJ data was encoded using a code-excited linear prediction (CELP) encoder and then reconstructed by a CELP decoder to create noisy speech data.   
+The project also involved filtering the results after CELP encoding. Therefore, if you implement it as described above, the values for Noisy-Clean should be better than those in the table below.    
+
+| dataset | SNR | PESQ | STOI | 
+|-----------------|--------|------|------| 
+| Noisy-Clean | -42.53 | 1.52 | 0.56 | 
+| Enhanced-Clean | -11.55 | 2.23 | 0.83 |
+
+M. Schroeder, B. Atal, Code-excited linear prediction (CELP): High-quality speech at very low bit rates, in: Proc. ICASSP, Vol. 10, 1985, pp. 937–940.  
+
+J. Stachurski, A. McCree, Combining parametric and waveform-matching coders for low bit-rate speech coding, in: Proc. EUSIPCO, 2000, pp. 1–4.  
+
 ## to-do list
 1. Traditional Chinese README
 2. The current code still needs to be streamlined, as there are many identical functions existing in different .py files.  
