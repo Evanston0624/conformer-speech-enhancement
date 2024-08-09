@@ -82,48 +82,30 @@ class Conformer(nn.Module):
         )
         self.fc = Linear(encoder_dim, num_classes, bias=False)
         self.sigmoid = nn.Sigmoid()
-        
-        self.encoder_2 = ConformerEncoder(
-            input_dim=input_dim*2,
-            encoder_dim=encoder_dim,
-            num_layers=num_encoder_layers,
-            num_attention_heads=num_attention_heads,
-            feed_forward_expansion_factor=feed_forward_expansion_factor,
-            conv_expansion_factor=conv_expansion_factor,
-            input_dropout_p=input_dropout_p,
-            feed_forward_dropout_p=feed_forward_dropout_p,
-            attention_dropout_p=attention_dropout_p,
-            conv_dropout_p=conv_dropout_p,
-            conv_kernel_size=conv_kernel_size,
-            half_step_residual=half_step_residual,
-        )
-        self.fc2 = Linear(encoder_dim, num_classes, bias=False)
 
     def count_parameters(self) -> int:
         """ Count parameters of encoder """
-        return self.encoder.count_parameters(), self.encoder_2.count_parameters()
+        return self.encoder.count_parameters()
 
     def update_dropout(self, dropout_p) -> None:
         """ Update dropout probability of model """
-        self.encoder.update_dropout(dropout_p), self.encoder_2.update_dropout(dropout_p)
-
-    # def forward(self, inputs: Tensor, input_lengths: Tensor) -> Tuple[Tensor, Tensor]:
-    #     encoder_ibm_opt, encoder_opt_len = self.encoder(inputs, input_lengths)
-
-    #     outputs_ibm = self.fc(encoder_ibm_opt)
-    #     outputs_ibm = self.sigmoid(outputs_ibm)
-
-    #     inputs_2 = torch.cat((inputs, outputs_ibm), dim=2)
-        
-    #     encoder_cln_opt, encoder_opt_len = self.encoder_2(inputs_2, input_lengths)
-    #     outputs_cln = self.fc2(encoder_cln_opt)
-
-    #     return outputs_ibm, outputs_cln, encoder_opt_len
+        self.encoder.update_dropout(dropout_p)
 
     def forward(self, inputs: Tensor, input_lengths: Tensor) -> Tuple[Tensor, Tensor]:
-        encoder_ibm_opt, encoder_opt_len = self.encoder(inputs, input_lengths)
+        """
+        Forward propagate a `inputs` and `targets` pair for training.
 
-        outputs_ibm = self.fc(encoder_ibm_opt)
-        outputs = self.sigmoid(outputs_ibm)
+        Args:
+            inputs (torch.FloatTensor): A input sequence passed to encoder. Typically for inputs this will be a padded
+                `FloatTensor` of size ``(batch, seq_length, dimension)``.
+            input_lengths (torch.LongTensor): The length of input tensor. ``(batch)``
 
-        return outputs, encoder_opt_len
+        Returns:
+            * predictions (torch.FloatTensor): Result of model predictions.
+        """
+        encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
+        outputs = self.fc(encoder_outputs)
+        
+        # fc_outputs = self.fc(encoder_outputs)
+        # outputs = self.sigmoid(fc_outputs)
+        return outputs, encoder_output_lengths

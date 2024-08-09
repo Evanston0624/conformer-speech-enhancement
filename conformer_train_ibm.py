@@ -24,18 +24,19 @@ class conformer_tr():
                           num_encoder_layers=num_encoder_layers,
                           num_attention_heads=num_attention_heads).to(self.device)
 
-        self.MSELoss = nn.MSELoss().to(self.device)
-        # ibm
-        # self.BCELoss = nn.BCELoss().to(self.device)
-        # self.BCELoss = nn.BCEWithLogitsLoss().to(self.device)
+        self.BCELoss = nn.BCELoss().to(self.device)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)  # 尝试更低的学习率
+        # self.optimizer = NAdam(self.model.parameters(), lr=1e-4)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)  # 尝试更低的学习率
 
         self.writer = SummaryWriter(CPTPth)
         
         # # 動態調整
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=5, verbose=True)
         
+        # 靜態調整
+        # self.normal_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.95)
+
     def train(self, Epochs, DtaLoader):
         self.num_epochs = Epochs
         self.dtaloader = DtaLoader
@@ -46,7 +47,7 @@ class conformer_tr():
         while Curr_epoch <= self.num_epochs:
             self._train_epoch(Curr_epoch)
             self._eval_epoch(Curr_epoch)
-            print('TrLoss:',self.TrLoss, 'VaLoss:',self.VaLoss)
+            print('TrLoss:',self.TrLoss, '|VaLoss:',self.VaLoss)
 
             self.writer.add_scalar('TrLoss', self.TrLoss, Curr_epoch)
             self.writer.add_scalar('VaLoss', self.VaLoss, Curr_epoch)
@@ -75,30 +76,21 @@ class conformer_tr():
 
         for itrNum, FeaDict in enumerate(pbar):
             # Forward propagate
-            outputs_ibm, outputs_cln, output_lengths = self.model(FeaDict['DegFeat']['inpfeat'].type(self.Dtype).to(self.device), torch.LongTensor([self.sequence_length]))
-            # print('outputs_ibm.shape:',outputs_ibm.shape)
-            # print('outputs_cln.shape:',outputs_cln.shape)
+            outputs, output_lengths = self.model(FeaDict['DegFeat']['inpfeat'].type(self.Dtype).to(self.device), torch.LongTensor([self.sequence_length]))
+            tarFea = TarFea = FeaDict['TarSpec']['ibmspec'].type(self.Dtype).to(self.device)
 
-            tarFea_ibm = FeaDict['TarSpec']['ibmspec'].type(self.Dtype).to(self.device)
-            tarFea_cln = FeaDict['TarSpec']['rcnspec'].type(self.Dtype).to(self.device)
-
-            # loss_1 = self.BCELoss(outputs_ibm.type(self.Dtype), tarFea_ibm.type(self.Dtype))
-            loss_1 = self.MSELoss(outputs_ibm.type(self.Dtype), tarFea_ibm.type(self.Dtype))
-            loss_2 = self.MSELoss(outputs_cln.type(self.Dtype), tarFea_cln.type(self.Dtype))
-            loss = loss_1 + loss_2
+            loss = self.BCELoss(outputs.type(self.Dtype), tarFea.type(self.Dtype))
 
             self.optimizer.zero_grad()
             loss.backward()
 
-            # # 梯度裁剪
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            # 梯度裁剪
+            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             
             self.optimizer.step()
             self.TrLoss += loss.item()
 
-            # pbar.set_postfix_str('loss={:^7.3f}'.format(self.TrLoss/(itrNum + 1)))
-            # pbar.set_postfix_str('loss1={:^7.3f}'.format(loss_1/(itrNum + 1)), 'loss2={:^7.3f}'.format(loss_2/(itrNum + 1)))
-            pbar.set_postfix({'loss1': loss_1.item(), 'loss2': loss_2.item()})
+            pbar.set_postfix_str('loss={:^7.3f}'.format(self.TrLoss/(itrNum + 1)))
 
         pbar.close()
         self.TrLoss /= len(self.dtaloader['tr'])
@@ -113,15 +105,12 @@ class conformer_tr():
         for itrNum, FeaDict in enumerate(pbar):
 
             with torch.no_grad():
-                outputs_ibm, outputs_cln, output_lengths = self.model(FeaDict['DegFeat']['inpfeat'].type(self.Dtype).to(self.device), torch.LongTensor([self.sequence_length]))
-                tarFea_ibm = FeaDict['TarSpec']['ibmspec'].type(self.Dtype).to(self.device)
-                tarFea_cln = FeaDict['TarSpec']['rcnspec'].type(self.Dtype).to(self.device)
+                outputs, output_lengths = self.model(FeaDict['DegFeat']['inpfeat'].type(self.Dtype).to(self.device), torch.LongTensor([self.sequence_length]))
+                tarFea = TarFea = FeaDict['TarSpec']['ibmspec'].type(self.Dtype).to(self.device)
 
-                # loss_1 = self.BCELoss(outputs_ibm.type(self.Dtype), tarFea_ibm.type(self.Dtype))
-                loss_1 = self.MSELoss(outputs_ibm.type(self.Dtype), tarFea_ibm.type(self.Dtype))
-                loss_2 = self.MSELoss(outputs_cln.type(self.Dtype), tarFea_cln.type(self.Dtype))
+                loss = self.BCELoss(outputs.type(self.Dtype), tarFea.type(self.Dtype))
 
-            self.VaLoss += loss_1.item() + loss_2.item()
+            self.VaLoss += loss.item()
 
             pbar.set_postfix_str('loss={:^7.3f};'.format(self.VaLoss/(itrNum + 1)))
 
@@ -130,33 +119,36 @@ class conformer_tr():
 
     def eval(self, data):
         self.model.eval()
-        # data = data.to(self.device)
+        data = data.to(self.device)
 
         for step in range(int(data.shape[1]/self.sequence_length)+1):
-            inp_data = data[:, step*300:(step+1)*300, :]
+            outputs, output_lengths = self.model(data, torch.LongTensor([self.sequence_length]))
 
-             # if input len <= 300
-            if inp_data.shape[1] <= 300:
+            inp_data = data[:, step*300:(step+1)*300, :]
+            # print('inp.shape:',inp_data.shape)
+             # 如果输入数据的长度小于 300
+            if inp_data.shape[1] < 300:
                 # 创建一个形状为 (1, 300, self.dim) 的全零张量
                 padded_data = torch.zeros((1, 300, self.dim))
 
+                # 将原始数据复制到新的全零张量中
                 padded_data[:, :inp_data.shape[1], :] = inp_data
-                outputs_ibm, outputs_cln, output_lengths = self.model(padded_data.to(self.device), torch.LongTensor([self.sequence_length]))
-                outputs_ibm = outputs_ibm[:, :inp_data.shape[1], :]
-                outputs_cln = outputs_cln[:, :inp_data.shape[1], :]
+                outputs, output_lengths = self.model(padded_data.to(self.device), torch.LongTensor([self.sequence_length]))
+                outputs = outputs[:, :inp_data.shape[1], :]
             else:
                 # 如果输入数据的长度大于等于 300，则不进行填充
                 padded_data = inp_data
-                outputs_ibm, outputs_cln, output_lengths = self.model(padded_data.to(self.device), torch.LongTensor([self.sequence_length]))
-    
+                outputs, output_lengths = self.model(padded_data.to(self.device), torch.LongTensor([self.sequence_length]))
+      
             if step == 0 :
-                opt_ibm = outputs_ibm
-                opt_cln = outputs_cln
+                opt_data = outputs
             else :
-                opt_ibm = torch.cat((opt_ibm, outputs_ibm), 1)
-                opt_cln = torch.cat((opt_cln, outputs_cln), 1)
+                opt_data = torch.cat((opt_data, outputs), 1)
 
-        return opt_ibm, opt_cln
+        # print('opt_data.shape:',opt_data.shape)
+        return opt_data
+
+        # return self.model(data[:, i*300:(i+1)*300, :], torch.LongTensor(data.shape[self.sequence_length]))
 
     def _save_Mdl(self, Curr_epoch):
         print(f'Saving model to {self.MdlPth}')

@@ -3,8 +3,8 @@ conformer/__pycache__/
 data/*
 model/*
 log/*
-./eval/
 eval/
-eval/log/*
-eval/spec/*
-
+figure*/
+npz*/
+ibm/
+dl_test*/
